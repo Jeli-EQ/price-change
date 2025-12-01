@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuperScanner Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --border-color: #334155;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 15px 30px;
+            border-bottom: 1px solid var(--border-color);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            margin: 0;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .status-badge {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--accent-green);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        /* Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .data-table th {
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .data-table tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .symbol {
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .signal-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: inline-block;
+        }
+
+        .bullish {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+        }
+
+        .bearish {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+
+        .neutral {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .price-value {
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 500;
+        }
+
+        .price-up {
+            color: var(--accent-green);
+        }
+
+        .price-down {
+            color: var(--accent-red);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        /* Action Buttons Placeholder */
+        .action-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: not-allowed;
+            font-size: 0.8rem;
+            margin-right: 5px;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            position: relative;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-color);
+            text-align: center;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .chart-img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: var(--accent-green);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 50px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* New Layout Styles */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 25px;
+            align-items: start;
+        }
+
+        @media (max-width: 1100px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .sidebar-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            position: sticky;
+            top: 20px;
+        }
+
+        .fav-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .fav-input {
+            flex: 1;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 10px;
+            border-radius: 6px;
+            outline: none;
+        }
+
+        .fav-btn {
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            padding: 0 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .fav-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .fav-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .fav-item:last-child {
+            border-bottom: none;
+        }
+
+        .fav-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .fav-symbol {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .fav-price {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .fav-change {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .fav-delete {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1.1rem;
+            padding: 5px;
+        }
+
+        .fav-delete:hover {
+            color: var(--accent-red);
+        }
+
+        .price-up {
+            color: var(--accent-green);
+        }
+
+        .price-down {
+            color: var(--accent-red);
+        }
+
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .navbar {
+                flex-direction: column;
+                gap: 15px;
+                padding: 15px;
+                align-items: stretch;
+            }
+
+            .nav-brand {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin-bottom: 5px;
+            }
+
+            .nav-links>div {
+                flex-direction: column;
+                width: 100%;
+                gap: 10px;
+            }
+
+            .balance-container {
+                justify-content: center;
+                margin-right: 0 !important;
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            .nav-links button,
+            .nav-links a {
+                justify-content: center;
+                width: 100%;
+            }
+
+            .status-badge {
+                justify-content: center;
+            }
+
+            .main-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .sidebar-card {
+                position: static;
+                margin-top: 20px;
+            }
+
+            /* Table Mobile Optimizations */
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                /* Smooth scroll on iOS */
+            }
+
+            .data-table th,
+            .data-table td {
+                padding: 10px 8px;
+                /* Smaller padding */
+                font-size: 0.85rem;
+                /* Smaller font */
+                white-space: nowrap;
+                /* Prevent wrapping to keep rows aligned */
+            }
+
+            .action-btn {
+                padding: 6px 12px;
+                /* Larger touch target */
+                margin-bottom: 2px;
+                font-size: 0.85rem;
+            }
+
+            h1,
+            h2 {
+                font-size: 1.5rem;
+            }
+
+            /* Modal Mobile */
+            .modal-content {
+                padding: 15px;
+                width: 95%;
+                margin: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header style="margin-bottom: 30px;">
+        <nav class="navbar">
+            <div class="nav-brand">
+                <span class="brand-icon">⚡</span>
+                Jeli - SuperScanner <span
+                    style="font-size: 0.8rem; color: var(--text-secondary); margin-left: 10px; font-weight: 400;">v2.2</span>
+            </div>
+            <div class="nav-links">
+                <div class="nav-items-container" style="display: flex; gap: 15px; align-items: center;">
+                    <div class="balance-container"
+                        style="display: flex; align-items: center; gap: 10px; margin-right: 5px; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 20px; border: 1px solid var(--border-color);">
+                        <span style="color: var(--text-secondary); font-size: 0.85rem;">Bakiye:</span>
+                        <span id="wallet-balance" style="font-weight: bold; color: var(--accent-green);">--
+                            $</span>
+                        <button onclick="fetchBalance()" id="btn-refresh-bal"
+                            style="background: none; border: none; cursor: pointer; font-size: 1rem; padding: 0; display: flex; align-items: center;"
+                            title="Bakiyeyi Güncelle">🔄</button>
+                    </div>
+                    <div class="nav-actions" style="display: flex; gap: 10px;">
+                        <button onclick="openSettings()"
+                            style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 15px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 5px; flex: 1; justify-content: center;">
+                            ⚙️ Ayarlar
+                        </button>
+                        <a href="/logout"
+                            style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; padding: 8px 15px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 5px; text-decoration: none; font-size: 0.9rem; flex: 1; justify-content: center;">
+                            🚪 Çıkış
+                        </a>
+                    </div>
+                    <div class="status-badge">
+                        <div class="pulse"></div> Live
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div class="container">
+
+
+
+        <div class="main-grid">
+            <!-- LEFT COLUMN: MAIN CONTENT -->
+            <div class="main-content">
+
+                <!-- OPEN POSITIONS -->
+                <div style="margin-bottom: 40px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="font-weight: 600; color: var(--accent-blue); margin: 0;">💼 Açık İşlemler</h2>
+                        <button onclick="fetchPositions()" id="btn-refresh-pos"
+                            style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-primary); padding: 5px 10px; border-radius: 6px; cursor: pointer;">🔄
+                            Yenile</button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Coin</th>
+                                    <th>Yön</th>
+                                    <th>Büyüklük</th>
+                                    <th>Giriş Fiyatı</th>
+                                    <th>Mark Fiyatı</th>
+                                    <th>PNL (USDT)</th>
+                                    <th>İşlem</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positions-list">
+                                <tr>
+                                    <td colspan="7" class="empty-state">Yükleniyor...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PRICE CHANGE ALERTS SECTION -->
+                <div class="section-header">
+                    <h2 style="color: var(--accent-blue);">⚡ Fiyat Değişim Sinyalleri (Son 24s)</h2>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>Yön</th>
+                                <th>Değişim (%)</th>
+                                <th>Fiyat</th>
+                                <th>Zaman</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody id="price-change-list"></tbody>
+                    </table>
+                </div>
+
+            </div>
+
+            <!-- RIGHT COLUMN: SIDEBAR -->
+            <div class="sidebar">
+                <div class="sidebar-card">
+                    <h3 style="margin-top: 0; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                        ⭐ Favoriler (Seçilenler)
+                    </h3>
+
+                    <div style="margin-bottom: 15px; font-size: 0.85rem; color: var(--text-secondary);">
+                        Listeden coinlerin yanındaki ⭐ butonuna basarak buraya ekleyebilirsiniz.
+                    </div>
+
+                    <ul id="fav-list" class="fav-list">
+                        <li style="text-align: center; color: var(--text-secondary); padding: 20px;">Yükleniyor...
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart Modal -->
+        <div id="chart-modal" class="modal-overlay" onclick="closeModal(event)">
+            <div class="modal-content" style="max-width: 95%; width: 1200px;">
+                <button class="modal-close" onclick="closeModal(event)">×</button>
+                <div id="modal-body" style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                    <!-- Charts will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal-overlay" onclick="closeSettings(event)">
+            <div class="modal-content" style="text-align: left; max-width: 500px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">⚙️ Bot Ayarları</h2>
+                    <button class="modal-close" style="position: static;" onclick="closeSettings(event)">×</button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: var(--text-secondary);">Zaman
+                            Aralığı
+                            (Interval)</label>
+                        <select id="cfg-interval"
+                            style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px;">
+                            <option value="1m">1 Dakika (1m)</option>
+                            <option value="5m">5 Dakika (5m)</option>
+                            <option value="15m">15 Dakika (15m)</option>
+                            <option value="1h">1 Saat (1h)</option>
+                            <option value="4h">4 Saat (4h)</option>
+                            <option value="1d">1 Gün (1d)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: var(--text-secondary);">Kaldıraç
+                            (Leverage)</label>
+                        <input type="number" id="cfg-leverage" min="1" max="125"
+                            style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px;"
+                            placeholder="Örn: 10">
+                    </div>
+
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: var(--text-secondary);">Telegram
+                            Chat
+                            ID</label>
+                        <input type="text" id="cfg-chat-id"
+                            style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px;"
+                            placeholder="Örn: 123456789">
+                    </div>
+
+                    <div
+                        style="display: flex; align-items: center; gap: 10px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                        <div style="width: 100%;">
+                            <label style="display: block; margin-bottom: 5px; color: var(--text-secondary);">Değişim
+                                Eşiği (%)</label>
+                            <input type="number" id="cfg-threshold" step="0.1"
+                                style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px;"
+                                placeholder="Örn: 5.0">
+                        </div>
+                    </div>
+
+                    <button onclick="saveSettings()"
+                        style="margin-top: 10px; background: var(--accent-green); color: white; border: none; padding: 12px; border-radius: 6px; font-weight: 600; cursor: pointer;">Kaydet
+                        ve Uygula</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // Settings Functions
+            async function openSettings() {
+                const modal = document.getElementById('settings-modal');
+                modal.classList.add('active');
+
+                // Load current config
+                try {
+                    const res = await fetch('/api/config');
+                    const config = await res.json();
+
+                    document.getElementById('cfg-interval').value = config.interval || '5m';
+                    document.getElementById('cfg-leverage').value = config.leverage || 10;
+                    document.getElementById('cfg-chat-id').value = config.telegram_chat_id || '';
+                    document.getElementById('cfg-threshold').value = config.price_change_threshold || 5.0;
+                } catch (e) {
+                    console.error("Config load error", e);
+                }
+            }
+
+            function closeSettings(event) {
+                if (event.target === document.getElementById('settings-modal') || event.target.classList.contains('modal-close')) {
+                    document.getElementById('settings-modal').classList.remove('active');
+                }
+            }
+
+            async function saveSettings() {
+                const config = {
+                    interval: document.getElementById('cfg-interval').value,
+                    leverage: document.getElementById('cfg-leverage').value,
+                    telegram_chat_id: document.getElementById('cfg-chat-id').value,
+                    price_change_threshold: document.getElementById('cfg-threshold').value
+                };
+
+                try {
+                    const res = await fetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+
+                    if (res.ok) {
+                        alert('Ayarlar kaydedildi! Bot bir sonraki döngüde yeni ayarları kullanacak.');
+                        document.getElementById('settings-modal').classList.remove('active');
+                    } else {
+                        alert('Hata oluştu.');
+                    }
+                } catch (e) {
+                    alert('Bağlantı hatası.');
+                }
+            }
+
+            // --- SELECTION & DELETE FUNCTIONS ---
+
+            function toggleAll(source, tbodyId) {
+                const checkboxes = document.querySelectorAll(`#${tbodyId} input[type="checkbox"]`);
+                checkboxes.forEach(cb => cb.checked = source.checked);
+                updateDeleteButtonState();
+            }
+
+            function updateDeleteButtonState() {
+                // Stoch
+                const stochCount = document.querySelectorAll('#stoch-list input[type="checkbox"]:checked').length;
+                document.getElementById('btn-del-stoch').style.display = stochCount > 0 ? 'inline-block' : 'none';
+
+                // Breakout
+                const breakoutCount = document.querySelectorAll('#breakout-list input[type="checkbox"]:checked').length;
+                document.getElementById('btn-del-breakout').style.display = breakoutCount > 0 ? 'inline-block' : 'none';
+
+                // Tracker (Both lists)
+                const trackerCount = document.querySelectorAll('#bo-list input[type="checkbox"]:checked').length +
+                    document.querySelectorAll('#other-list input[type="checkbox"]:checked').length;
+                document.getElementById('btn-del-tracker').style.display = trackerCount > 0 ? 'inline-block' : 'none';
+            }
+
+            async function placeTrade(symbol, amount, side) {
+                if (!confirm(`${symbol} için ${amount}$ işlem açılsın mı? (${side})`)) return;
+
+                const btn = event.target;
+                const originalText = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '⏳';
+
+                try {
+                    const res = await fetch('/api/trade', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbol, amount, side })
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        btn.innerHTML = '✅';
+                        setTimeout(() => {
+                            btn.innerHTML = originalText;
+                            btn.disabled = false;
+                        }, 2000);
+                        // Optional: Show a toast or notification with order details
+                        console.log("Order placed:", data);
+                    } else {
+                        throw new Error(data.error || 'İşlem başarısız');
+                    }
+                } catch (e) {
+                    alert('İşlem hatası: ' + e.message);
+                    btn.innerHTML = '❌';
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }, 2000);
+                }
+            }
+
+            async function deleteSelected(type) {
+                if (!confirm('Seçili coinleri silmek istediğinize emin misiniz?')) return;
+
+                let selectors = [];
+                if (type === 'stoch') selectors = ['#stoch-list'];
+                else if (type === 'breakout') selectors = ['#breakout-list'];
+                else if (type === 'tracker') selectors = ['#bo-list', '#other-list'];
+
+                let symbols = [];
+                selectors.forEach(sel => {
+                    document.querySelectorAll(`${sel} input[type="checkbox"]:checked`).forEach(cb => {
+                        symbols.push(cb.value);
+                    });
+                });
+
+                if (symbols.length === 0) return;
+
+                try {
+                    const res = await fetch(`/api/delete/${type}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbols: symbols })
+                    });
+
+                    if (res.ok) {
+                        fetchData(); // Refresh data
+                        // Reset header checkboxes
+                        document.querySelectorAll('thead input[type="checkbox"]').forEach(cb => cb.checked = false);
+                    } else {
+                        alert('Silme işlemi başarısız.');
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('Hata oluştu.');
+                }
+            }
+
+            async function addFavorite(symbol, source = 'Manuel') {
+                // If symbol is passed (from table button), use it. Otherwise get from input (if exists).
+                let btn = null;
+
+                // Check if called from a button event
+                if (event && event.target && event.target.classList.contains('action-btn')) {
+                    btn = event.target;
+                    btn.disabled = true;
+                    btn.innerHTML = '⏳';
+                }
+
+                if (!symbol) {
+                    const input = document.getElementById('fav-input');
+                    if (input) {
+                        symbol = input.value.trim().toUpperCase();
+                        if (!symbol.endsWith('USDT') && !symbol.endsWith('USD')) symbol += 'USDT';
+                    }
+                }
+
+                if (!symbol) {
+                    if (btn) { btn.disabled = false; btn.innerHTML = '⭐'; }
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/favorites', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbol: symbol, source: source })
+                    });
+
+                    if (res.ok) {
+                        // Clear input if it exists
+                        const input = document.getElementById('fav-input');
+                        if (input) input.value = '';
+
+                        fetchFavorites();
+
+                        // Feedback
+                        if (btn) {
+                            btn.innerHTML = '✅';
+                            setTimeout(() => {
+                                btn.innerHTML = '⭐';
+                                btn.disabled = false;
+                            }, 1500);
+                        }
+                    } else {
+                        throw new Error('Server error');
+                    }
+                } catch (e) {
+                    alert('Ekleme hatası: ' + e.message);
+                    if (btn) { btn.disabled = false; btn.innerHTML = '❌'; }
+                }
+            }
+
+            async function removeFavorite(symbol) {
+                if (!confirm(`${symbol} favorilerden silinsin mi?`)) return;
+
+                // Find the delete button for this symbol (in fav list)
+                const deleteBtns = document.querySelectorAll('.fav-delete');
+                let targetBtn = null;
+                // Simple heuristic: usually the click event target, but here we pass symbol.
+                // We can just disable all delete buttons temporarily or find by parent.
+                // For simplicity, we'll just proceed.
+
+                try {
+                    const res = await fetch('/api/favorites', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbol })
+                    });
+                    if (res.ok) fetchFavorites();
+                    else alert('Silme başarısız oldu.');
+                } catch (e) { alert('Silme hatası: ' + e.message); }
+            }
+
+            async function fetchFavorites() {
+                try {
+                    const [listRes, dataRes] = await Promise.all([
+                        fetch('/api/favorites'),
+                        fetch('/api/favorites_data')
+                    ]);
+
+                    const list = await listRes.json();
+                    const data = await dataRes.json();
+
+                    renderFavorites(list, data);
+                } catch (e) {
+                    console.error("Fav fetch error", e);
+                }
+            }
+
+            function renderFavorites(list, data) {
+                const ul = document.getElementById('fav-list');
+                ul.innerHTML = '';
+
+                if (list.length === 0) {
+                    ul.innerHTML = '<li style="text-align: center; color: var(--text-secondary); padding: 20px;">Henüz favori yok.</li>';
+                    return;
+                }
+
+                list.forEach(item => {
+                    // Handle both string and object formats
+                    const symbol = typeof item === 'string' ? item : item.symbol;
+                    const source = typeof item === 'string' ? 'Manuel' : (item.source || 'Manuel');
+
+                    const itemData = data[symbol] || {};
+                    const price = itemData.price ? itemData.price.toFixed(4) : '-';
+                    // Removed change percentage as requested
+
+                    const li = document.createElement('li');
+                    li.className = 'fav-item';
+                    li.innerHTML = `
+                        <div class="fav-info" onclick="openModal('${symbol}')" style="cursor: pointer;">
+                            <span class="fav-symbol">${symbol}</span>
+                            <span class="fav-price" style="font-size: 0.8rem; color: var(--text-secondary);">${source}</span>
+                            <span class="fav-price" style="margin-left: auto;">${price}</span>
+                        </div>
+                        <button onclick="removeFavorite('${symbol}')" class="fav-delete">×</button>
+                    `;
+                    ul.appendChild(li);
+                });
+            }
+
+            async function fetchData() {
+                try {
+                    const [historyRes] = await Promise.all([
+                        fetch('/api/price_change_history')
+                    ]);
+
+                    const historyData = await historyRes.json();
+
+                    renderPriceChange(historyData);
+
+                    // Fetch favorites too
+                    fetchFavorites();
+
+                    // Fetch balance
+                    fetchBalance();
+
+                    // Fetch positions
+                    fetchPositions();
+                } catch (error) {
+                    console.error('Error fetching data:', error);
+                }
+            }
+
+            function renderPriceChange(data) {
+                const tbody = document.getElementById('price-change-list');
+                tbody.innerHTML = '';
+
+                const sortedItems = Object.entries(data).sort(([, a], [, b]) => {
+                    return (b.timestamp_epoch || 0) - (a.timestamp_epoch || 0);
+                });
+
+                if (sortedItems.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Son 24 saatte sinyal yok.</td></tr>';
+                    return;
+                }
+
+                sortedItems.forEach(([key, item]) => {
+                    const change = item.change;
+                    const isBullish = change > 0;
+                    const signalClass = isBullish ? 'bullish' : 'bearish';
+                    const priceClass = isBullish ? 'price-up' : 'price-down';
+                    const directionText = isBullish ? 'YÜKSELİŞ' : 'DÜŞÜŞ';
+
+                    const secondsAgo = Math.floor((Date.now() / 1000) - item.timestamp_epoch);
+                    let timeText = secondsAgo < 60 ? `${secondsAgo}sn önce` : `${Math.floor(secondsAgo / 60)}dk önce`;
+
+                    const tr = document.createElement('tr');
+
+                    const contentHtml = `
+                    <td class="symbol">${item.symbol}</td>
+                    <td><span class="signal-badge ${signalClass}">${directionText}</span></td>
+                    <td class="price-value ${priceClass}">%${change.toFixed(2)}</td>
+                    <td class="price-value">${item.price}</td>
+                    <td>${timeText}</td>
+                    <td>
+                        <button class="action-btn" onclick="event.stopPropagation(); addFavorite('${item.symbol}', 'Price Change')" title="Favoriye Ekle">⭐</button>
+                        <button class="action-btn" onclick="event.stopPropagation(); placeTrade('${item.symbol}', 10, '${isBullish ? 'BUY' : 'SELL'}')">10$</button>
+                        <button class="action-btn" onclick="event.stopPropagation(); placeTrade('${item.symbol}', 20, '${isBullish ? 'BUY' : 'SELL'}')">20$</button>
+                        <button class="action-btn" onclick="event.stopPropagation(); placeTrade('${item.symbol}', 50, '${isBullish ? 'BUY' : 'SELL'}')">50$</button>
+                    </td>
+                `;
+
+                    tr.innerHTML = contentHtml;
+
+                    const chartFile = item.chart_file || null;
+                    tr.onclick = (e) => {
+                        if (!e.target.classList.contains('action-btn')) {
+                            openModal(item.symbol, chartFile);
+                        }
+                    };
+
+                    tbody.appendChild(tr);
+                });
+            }
+
+            function openModal(symbol, signalImageFile) {
+                const modal = document.getElementById('chart-modal');
+                const body = document.getElementById('modal-body');
+                body.innerHTML = ''; // Clear previous content
+                modal.classList.add('active');
+
+                // Container for Signal Chart (Before)
+                if (signalImageFile) {
+                    const signalContainer = document.createElement('div');
+                    signalContainer.style.flex = '1';
+                    signalContainer.style.minWidth = '400px';
+                    signalContainer.innerHTML = `
+                    <h3 style="margin-top: 0; color: var(--text-secondary);">Sinyal Anı (Geçmiş)</h3>
+                    <div class="loading-spinner"></div>
+                `;
+                    body.appendChild(signalContainer);
+
+                    const imgSignal = new Image();
+                    imgSignal.src = `/api/chart_image/${signalImageFile}`;
+                    imgSignal.className = 'chart-img';
+                    imgSignal.onload = () => {
+                        signalContainer.innerHTML = `<h3 style="margin-top: 0; color: var(--text-secondary);">Sinyal Anı (Geçmiş)</h3>`;
+                        signalContainer.appendChild(imgSignal);
+                    };
+                    imgSignal.onerror = () => {
+                        signalContainer.innerHTML = `<h3 style="margin-top: 0; color: var(--text-secondary);">Sinyal Anı (Geçmiş)</h3><p style="color: var(--accent-red)">Resim bulunamadı.</p>`;
+                    };
+                }
+
+                // Container for Live Chart (After)
+                const liveContainer = document.createElement('div');
+                liveContainer.style.flex = '1';
+                liveContainer.style.minWidth = '400px';
+                liveContainer.innerHTML = `
+                <h3 style="margin-top: 0; color: var(--accent-blue);">Canlı Durum (Şimdi)</h3>
+                <div class="loading-spinner"></div>
+            `;
+                body.appendChild(liveContainer);
+
+                const imgLive = new Image();
+                imgLive.src = `/api/chart/${symbol}?t=${new Date().getTime()}`;
+                imgLive.className = 'chart-img';
+                imgLive.onload = () => {
+                    liveContainer.innerHTML = `<h3 style="margin-top: 0; color: var(--accent-blue);">Canlı Durum (Şimdi)</h3>`;
+                    liveContainer.appendChild(imgLive);
+                };
+                imgLive.onerror = () => {
+                    liveContainer.innerHTML = `<h3 style="margin-top: 0; color: var(--accent-blue);">Canlı Durum (Şimdi)</h3><p style="color: var(--accent-red)">Grafik yüklenemedi.</p>`;
+                };
+            }
+
+            function closeModal(event) {
+                if (event.target === document.getElementById('chart-modal') || event.target.classList.contains('modal-close')) {
+                    document.getElementById('chart-modal').classList.remove('active');
+                }
+            }
+            // --- POSITIONS MANAGEMENT ---
+            async function fetchPositions() {
+                const btn = document.getElementById('btn-refresh-pos');
+                if (btn) btn.innerHTML = '⏳';
+
+                try {
+                    const res = await fetch('/api/positions');
+                    const data = await res.json();
+
+                    if (data.error) {
+                        document.getElementById('positions-list').innerHTML = `<tr><td colspan="7" class="empty-state" style="color:red">${data.error}</td></tr>`;
+                    } else {
+                        renderPositions(data);
+                    }
+                } catch (e) {
+                    console.error("Positions fetch error", e);
+                    document.getElementById('positions-list').innerHTML = '<tr><td colspan="7" class="empty-state">Veri çekilemedi.</td></tr>';
+                } finally {
+                    if (btn) btn.innerHTML = '🔄 Yenile';
+                }
+            }
+
+            function renderPositions(data) {
+                const tbody = document.getElementById('positions-list');
+                tbody.innerHTML = '';
+
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Açık işlem yok.</td></tr>';
+                    return;
+                }
+
+                data.forEach(pos => {
+                    const isLong = pos.side === 'LONG';
+                    const pnlClass = pos.unRealizedProfit > 0 ? 'price-up' : (pos.unRealizedProfit < 0 ? 'price-down' : '');
+                    const pnlSign = pos.unRealizedProfit > 0 ? '+' : '';
+                    const sideClass = isLong ? 'signal-long' : 'signal-short';
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="symbol" onclick="openModal('${pos.symbol}')" style="cursor:pointer">${pos.symbol} <span style="font-size:0.8em; color:var(--text-secondary)">${pos.leverage}x</span></td>
+                        <td><span class="badge ${sideClass}">${pos.side}</span></td>
+                        <td>${Math.abs(pos.amount)}</td>
+                        <td>${pos.entryPrice.toFixed(4)}</td>
+                        <td>${pos.markPrice.toFixed(4)}</td>
+                        <td class="${pnlClass}" style="font-weight:bold">${pnlSign}${pos.unRealizedProfit.toFixed(2)} $</td>
+                        <td>
+                            <button class="action-btn" style="background: rgba(255, 59, 48, 0.15); color: #ff453a; border: 1px solid rgba(255, 59, 48, 0.3);" 
+                                onclick="closePosition('${pos.symbol}')">Kapat</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            async function closePosition(symbol) {
+                if (!confirm(`${symbol} pozisyonu MARKET fiyatından kapatılsın mı?`)) return;
+
+                const btn = event.target;
+                const originalText = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '⏳';
+
+                try {
+                    const res = await fetch('/api/close_position', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbol })
+                    });
+
+                    if (res.ok) {
+                        btn.innerHTML = '✅';
+                        setTimeout(() => {
+                            fetchPositions(); // Refresh list
+                            fetchBalance();   // Refresh balance
+                        }, 1000);
+                    } else {
+                        const d = await res.json();
+                        throw new Error(d.error || 'Hata');
+                    }
+                } catch (e) {
+                    alert('Kapatma hatası: ' + e.message);
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+            }
+
+            fetchData();
+            setInterval(fetchData, 3000);
+        </script>
+</body>
+
+</html>

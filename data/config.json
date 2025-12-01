@@ -1,0 +1,7 @@
+{
+  "interval": "5m",
+  "telegram_chat_id": "7241360774",
+  "price_change_threshold": "5",
+  "price_change_interval": "5m",
+  "leverage": "10"
+}
