@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["python310", "gcc", "gnumake", "freetype", "libpng", "pkg-config", "zlib"]
-
-[phases.install]
-cmds = ["python3 -m pip install --upgrade pip", "python3 -m pip install -r requirements.txt", "chmod +x start.sh"]
-
-[start]
-cmd = "./start.sh"
