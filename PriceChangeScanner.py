@@ -8,7 +8,8 @@ import mplfinance as mpf
 import matplotlib
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
-from binance.client import Client
+from binance.client import AsyncClient
+from binance.exceptions import BinanceAPIException
 
 matplotlib.use('Agg')
 
@@ -23,12 +24,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-try:
-    binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
-    logger.info("Binance Futures'a başarıyla bağlanıldı.")
-except Exception as e:
-    logger.error(f"Binance'e bağlanırken hata oluştu: {e}")
-    binance_client = None
+# Global Client
+binance_client = None
 
 # --- CONFIG & PATHS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -102,9 +99,9 @@ def cleanup_old_charts():
 
 # --- DATA FETCHING ---
 
-def fetch_data(symbol, interval, limit=100):
+async def fetch_data(client, symbol, interval, limit=100):
     try:
-        klines = binance_client.futures_klines(symbol=symbol, interval=interval, limit=limit)
+        klines = await client.futures_klines(symbol=symbol, interval=interval, limit=limit)
         if not klines or len(klines) < limit:
             return None
 
@@ -155,28 +152,6 @@ async def send_chart(chat_id, bot, filename, caption):
     filepath = os.path.join(CHARTS_DIR, filename)
     if os.path.exists(filepath):
         with open(filepath, 'rb') as f:
-            # Add trade shortcuts
-            symbol = filename.split('_')[0]
-            keyboard = [
-                [
-                    InlineKeyboardButton(f"Buy {symbol}", callback_data=f"trade:BUY:{symbol}"),
-                    InlineKeyboardButton(f"Sell {symbol}", callback_data=f"trade:SELL:{symbol}")
-                ]
-            ]
-            # Note: Telegram bot here doesn't handle trade callbacks directly as it requires API keys which are in dashboard. 
-            # But user asked for shortcuts. In SuperScanner, shortcuts were for "Update". 
-            # The dashboard has trade buttons. 
-            # If I add buttons here, I need a callback handler to process them.
-            # For now, I will just send the chart. The user can use the dashboard for trading.
-            # OR I can add a Deep Link to the dashboard?
-            # Let's stick to the requested "shortcuts for entering trade". 
-            # Since the bot runs separately from the dashboard (flask), the bot can't easily execute trades unless it shares the client or calls the dashboard API.
-            # However, the user said "shortcuts included".
-            # I'll add a "Open in Dashboard" button or similar if I can't do direct trade.
-            # Actually, `SuperScanner.py` didn't have trade buttons in the code I read, only "Update".
-            # The dashboard has trade buttons.
-            # I will assume "shortcuts" means the dashboard buttons, OR I can add a link button.
-            
             await bot.send_photo(
                 chat_id=chat_id, 
                 photo=f, 
@@ -186,41 +161,26 @@ async def send_chart(chat_id, bot, filename, caption):
 
 # --- SCANNER ---
 
-async def scanner(application: Application):
-    config = load_config()
-    chat_id = config.get("telegram_chat_id")
-    interval = config.get("price_change_interval", "5m") # Default 5m
-    threshold = float(config.get("price_change_threshold", 5.0))
-    
-    if not chat_id:
-        return
-
-    try:
-        exchange_info = binance_client.futures_exchange_info()
-        symbols = [s["symbol"] for s in exchange_info["symbols"] if s["symbol"].endswith("USDT") and "BTCST" not in s["symbol"]]
-        
-        logger.info(f"Tarama Başlıyor... ({len(symbols)} coin, {interval}, Limit: %{threshold})")
-
-        for symbol in symbols:
-            # Fetch last 2 candles to compare close of last closed candle vs open, or just use current candle
-            # "In the last 5 minutes" -> The current 5m candle.
-            df = fetch_data(symbol, interval, limit=50)
+async def process_symbol(sem, client, symbol, interval, threshold, application, chat_id):
+    async with sem:
+        try:
+            # Fetch last 50 candles
+            df = await fetch_data(client, symbol, interval, limit=50)
             if df is None or len(df) < 2:
-                continue
-                
+                return
+
             # Check the latest candle (current forming)
             current_candle = df.iloc[-1]
             open_price = float(current_candle['open'])
             current_price = float(current_candle['close'])
             
-            if open_price == 0: continue
+            if open_price == 0: return
             
             change_percent = ((current_price - open_price) / open_price) * 100
             
             # Check if threshold met
             if abs(change_percent) >= threshold:
                 # Unique key for this specific candle event: Symbol + Candle Open Time
-                # This prevents spamming the same candle multiple times
                 key = (symbol, str(current_candle.name))
                 
                 if key not in notified_signals:
@@ -244,19 +204,59 @@ async def scanner(application: Application):
                         "chart_file": filename
                     }
                     save_history()
+        except Exception as e:
+            logger.error(f"Error processing {symbol}: {e}")
 
-            await asyncio.sleep(0.05) # Rate limit
+async def scanner(application: Application):
+    global binance_client
+    if binance_client is None:
+        try:
+            binance_client = await AsyncClient.create(BINANCE_API_KEY, BINANCE_API_SECRET)
+            logger.info("Binance AsyncClient başlatıldı.")
+        except Exception as e:
+            logger.error(f"Binance client başlatılamadı: {e}")
+            return
+
+    config = load_config()
+    chat_id = config.get("telegram_chat_id")
+    interval = config.get("price_change_interval", "5m") # Default 5m
+    threshold = float(config.get("price_change_threshold", 5.0))
+    
+    if not chat_id:
+        return
+
+    try:
+        exchange_info = await binance_client.futures_exchange_info()
+        symbols = [s["symbol"] for s in exchange_info["symbols"] if s["symbol"].endswith("USDT") and "BTCST" not in s["symbol"]]
+        
+        logger.info(f"Tarama Başlıyor... ({len(symbols)} coin, {interval}, Limit: %{threshold})")
+
+        # Limit concurrency to avoid rate limits
+        # Binance allows ~2400 weight per minute. klines weight is 1.
+        # We can process reasonably fast.
+        sem = asyncio.Semaphore(20) # 20 concurrent requests
+
+        tasks = [
+            process_symbol(sem, binance_client, symbol, interval, threshold, application, chat_id)
+            for symbol in symbols
+        ]
+        
+        await asyncio.gather(*tasks)
 
         cleanup_old_charts()
         logger.info("Tarama döngüsü tamamlandı.")
 
     except Exception as e:
         logger.error(f"Tarama döngüsü hatası: {e}")
+        # If client error, reset it
+        if binance_client:
+            await binance_client.close_connection()
+            binance_client = None
 
 async def background_scanner(application: Application):
     while True:
         await scanner(application)
-        await asyncio.sleep(10) # Wait 10 seconds between scans
+        await asyncio.sleep(5) # Wait 5 seconds between scans (reduced from 10)
 
 # --- TELEGRAM COMMANDS ---
 
