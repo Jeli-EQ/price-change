@@ -53,15 +53,19 @@ notified_signals = {} # {(symbol, timestamp): True}
 
 def load_config():
     default_config = {
-        "interval": "5m", 
+        "interval": "5", # Default 5 minutes (stored as string or int, we'll parse it)
         "telegram_chat_id": None, 
         "price_change_threshold": 5.0,
-        "price_change_interval": "5m" # Default check interval
+        "price_change_interval": "5" # Legacy key, same as interval
     }
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
+                # Normalize interval: remove 'm' if present
+                if "price_change_interval" in cfg:
+                    cfg["interval"] = cfg["price_change_interval"].replace("m", "")
+                
                 for k, v in default_config.items():
                     cfg.setdefault(k, v)
                 return cfg
@@ -99,9 +103,13 @@ def cleanup_old_charts():
 
 # --- DATA FETCHING ---
 
-async def fetch_data(client, symbol, interval, limit=100):
+async def fetch_data(client, symbol, limit=100):
+    """
+    Always fetch 1m candles to allow flexible rolling window calculations.
+    """
     try:
-        klines = await client.futures_klines(symbol=symbol, interval=interval, limit=limit)
+        # Fetch 1m candles
+        klines = await client.futures_klines(symbol=symbol, interval='1m', limit=limit)
         if not klines or len(klines) < limit:
             return None
 
@@ -119,18 +127,17 @@ async def fetch_data(client, symbol, interval, limit=100):
 
 # --- CHART GENERATION ---
 
-def generate_chart_image(symbol, df, change_percent, interval):
+def generate_chart_image(symbol, df, change_percent, interval_minutes):
     filename = f"{symbol}_PC_{int(time.time())}.png"
     filepath = os.path.join(CHARTS_DIR, filename)
     
     direction = "YÜKSELİŞ" if change_percent > 0 else "DÜŞÜŞ"
     emoji = "🚀" if change_percent > 0 else "🔻"
-    color = 'green' if change_percent > 0 else 'red'
     
-    title_text = f"{symbol} {interval} {direction} %{change_percent:.2f}"
+    title_text = f"{symbol} {interval_minutes}m {direction} %{change_percent:.2f}"
     caption_text = (
         f"{emoji} <b>{symbol}</b> Ani {direction}!\n"
-        f"Son {interval} içinde <b>%{change_percent:.2f}</b> değişim."
+        f"Son {interval_minutes} dakika içinde <b>%{change_percent:.2f}</b> değişim."
     )
 
     s = mpf.make_mpf_style(base_mpf_style='binance', rc={'font.size': 8})
@@ -143,7 +150,7 @@ def generate_chart_image(symbol, df, change_percent, interval):
         'savefig': filepath
     }
     
-    # Plot last 60 candles
+    # Plot enough candles to show the context (e.g., last 60 minutes)
     mpf.plot(df.iloc[-60:], **plot_args)
     
     return filename, caption_text
@@ -161,17 +168,46 @@ async def send_chart(chat_id, bot, filename, caption):
 
 # --- SCANNER ---
 
-async def process_symbol(sem, client, symbol, interval, threshold, application, chat_id):
+async def process_symbol(sem, client, symbol, interval_minutes, threshold, application, chat_id):
     async with sem:
         try:
-            # Fetch last 50 candles
-            df = await fetch_data(client, symbol, interval, limit=50)
-            if df is None or len(df) < 2:
+            # We need enough data for the window + some context for the chart
+            # e.g. if interval is 5m, we need at least 6 candles. 
+            # Fetching 100 gives plenty of context for the chart too.
+            df = await fetch_data(client, symbol, limit=100)
+            if df is None or len(df) < interval_minutes + 1:
                 return
 
-            # Check the latest candle (current forming)
+            # Rolling Window Logic:
+            # Compare Current Close vs Close N minutes ago (or Open N minutes ago?)
+            # The reference bot uses:
+            # ilk_fiyat = klines[0][1] (Open of the candle N minutes ago)
+            # son_fiyat = klines[-1][4] (Close of the current candle)
+            # This covers the full range from the start of the window to now.
+            
+            # df.iloc[-1] is current candle
+            # df.iloc[-(interval_minutes+1)] would be the candle N minutes ago.
+            # Let's say interval is 5. We want the change over the last 5 minutes.
+            # That means we look at the price 5 minutes ago vs now.
+            
+            # Using the logic from binancealert.py:
+            # klines limit = dakika_araligi + 1
+            # ilk_fiyat = klines[0][1] (Open price of the oldest candle fetched)
+            # son_fiyat = klines[-1][4] (Close price of the newest candle)
+            
+            # In pandas:
+            # The current candle is at index -1.
+            # The candle 'interval_minutes' ago is at index -(interval_minutes).
+            # We want the OPEN of that candle.
+            
+            # Example: Interval = 5.
+            # Candles: [t-4, t-3, t-2, t-1, t] (5 candles)
+            # We want Open of t-4 vs Close of t.
+            
+            past_candle = df.iloc[-interval_minutes]
             current_candle = df.iloc[-1]
-            open_price = float(current_candle['open'])
+            
+            open_price = float(past_candle['open'])
             current_price = float(current_candle['close'])
             
             if open_price == 0: return
@@ -180,19 +216,21 @@ async def process_symbol(sem, client, symbol, interval, threshold, application, 
             
             # Check if threshold met
             if abs(change_percent) >= threshold:
-                # Unique key for this specific candle event: Symbol + Candle Open Time
-                key = (symbol, str(current_candle.name))
+                # Spam Prevention:
+                # Don't alert for the same symbol too frequently (e.g. 5 mins)
+                now = time.time()
+                last_notify_time = notified_signals.get(symbol, 0)
                 
-                if key not in notified_signals:
+                if (now - last_notify_time) > 300: # 5 minutes cooldown per symbol
                     logger.info(f"Sinyal: {symbol} %{change_percent:.2f}")
                     
                     filename, caption = await asyncio.to_thread(
-                        generate_chart_image, symbol, df, change_percent, interval
+                        generate_chart_image, symbol, df, change_percent, interval_minutes
                     )
                     
                     await send_chart(chat_id, application.bot, filename, caption)
                     
-                    notified_signals[key] = True
+                    notified_signals[symbol] = now
                     
                     # Save to history for Dashboard
                     price_change_history[symbol] = {
@@ -200,7 +238,7 @@ async def process_symbol(sem, client, symbol, interval, threshold, application, 
                         "change": change_percent,
                         "price": current_price,
                         "timestamp": str(current_candle.name),
-                        "timestamp_epoch": time.time(),
+                        "timestamp_epoch": now,
                         "chart_file": filename
                     }
                     save_history()
@@ -219,7 +257,14 @@ async def scanner(application: Application):
 
     config = load_config()
     chat_id = config.get("telegram_chat_id")
-    interval = config.get("price_change_interval", "5m") # Default 5m
+    
+    # Parse interval as integer minutes
+    try:
+        interval_str = str(config.get("interval", "5")).replace("m", "")
+        interval_minutes = int(interval_str)
+    except:
+        interval_minutes = 5
+        
     threshold = float(config.get("price_change_threshold", 5.0))
     
     if not chat_id:
@@ -229,15 +274,12 @@ async def scanner(application: Application):
         exchange_info = await binance_client.futures_exchange_info()
         symbols = [s["symbol"] for s in exchange_info["symbols"] if s["symbol"].endswith("USDT") and "BTCST" not in s["symbol"]]
         
-        logger.info(f"Tarama Başlıyor... ({len(symbols)} coin, {interval}, Limit: %{threshold})")
+        logger.info(f"Tarama Başlıyor... ({len(symbols)} coin, {interval_minutes}m Rolling, Limit: %{threshold})")
 
-        # Limit concurrency to avoid rate limits
-        # Binance allows ~2400 weight per minute. klines weight is 1.
-        # We can process reasonably fast.
         sem = asyncio.Semaphore(20) # 20 concurrent requests
 
         tasks = [
-            process_symbol(sem, binance_client, symbol, interval, threshold, application, chat_id)
+            process_symbol(sem, binance_client, symbol, interval_minutes, threshold, application, chat_id)
             for symbol in symbols
         ]
         
@@ -248,7 +290,6 @@ async def scanner(application: Application):
 
     except Exception as e:
         logger.error(f"Tarama döngüsü hatası: {e}")
-        # If client error, reset it
         if binance_client:
             await binance_client.close_connection()
             binance_client = None
@@ -256,7 +297,7 @@ async def scanner(application: Application):
 async def background_scanner(application: Application):
     while True:
         await scanner(application)
-        await asyncio.sleep(5) # Wait 5 seconds between scans (reduced from 10)
+        await asyncio.sleep(5) # Wait 5 seconds between scans
 
 # --- TELEGRAM COMMANDS ---
 
@@ -279,18 +320,19 @@ async def set_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def set_interval(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        new_interval = context.args[0]
-        # Validate interval
-        if new_interval not in ['1m', '3m', '5m', '15m', '30m', '1h', '4h']:
-             await update.message.reply_text("Geçersiz aralık. (1m, 3m, 5m, 15m, 30m, 1h, 4h)")
+        # User might type "5" or "5m"
+        new_interval = context.args[0].replace("m", "")
+        if not new_interval.isdigit():
+             await update.message.reply_text("Lütfen dakika cinsinden bir sayı girin. Örnek: 5")
              return
              
         config = load_config()
-        config["price_change_interval"] = new_interval
+        config["interval"] = new_interval
+        config["price_change_interval"] = new_interval # Keep legacy for compatibility
         save_config(config)
-        await update.message.reply_text(f"Zaman aralığı ayarlandı: {new_interval}")
+        await update.message.reply_text(f"Zaman aralığı ayarlandı: {new_interval} dakika (Rolling Window)")
     except:
-        await update.message.reply_text("Kullanım: /interval 5m")
+        await update.message.reply_text("Kullanım: /interval 5")
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
