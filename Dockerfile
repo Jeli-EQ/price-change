@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements first to leverage cache
 COPY requirements.txt .
+# Force reinstall dependencies (Updated: 2025-12-03)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application
