@@ -6,6 +6,7 @@ import time
 import pandas as pd
 import mplfinance as mpf
 import matplotlib
+import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 from binance.client import Client
@@ -185,9 +186,6 @@ def process_symbol_sync(client, symbol, interval_minutes, threshold):
         
         if abs(change_percent) >= threshold:
             now = time.time()
-            # We check notified_signals in the main loop to avoid race conditions or just check here if we pass the dict
-            # But for thread safety, it's better to return the result and handle state in the main loop.
-            
             # Generate chart here (CPU bound, but okay in thread)
             filename, caption = generate_chart_image(symbol, df, change_percent, interval_minutes)
             
@@ -210,9 +208,13 @@ async def scanner(application: Application):
     global binance_client
     if binance_client is None:
         try:
-            # Use standard synchronous Client
-            binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
-            logger.info("Binance Client (Sync) başlatıldı.")
+            # Configure requests session with larger pool
+            session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=20)
+            session.mount('https://', adapter)
+            
+            binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, requests_params={'session': session})
+            logger.info("Binance Client (Sync) başlatıldı (Custom Session).")
         except Exception as e:
             logger.error(f"Binance client başlatılamadı: {e}")
             return
@@ -238,12 +240,10 @@ async def scanner(application: Application):
         
         logger.info(f"Tarama Başlıyor... ({len(symbols)} coin, {interval_minutes}m Rolling, Limit: %{threshold})")
 
-        # Use ThreadPoolExecutor for parallel execution
-        # Run synchronous tasks in separate threads to avoid blocking the asyncio loop
+        # Reduce max_workers to 5 to avoid API rate limits
         loop = asyncio.get_running_loop()
         
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            # Create a list of futures
+        with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [
                 loop.run_in_executor(
                     executor, 
@@ -256,7 +256,6 @@ async def scanner(application: Application):
                 for symbol in symbols
             ]
             
-            # Wait for all to complete
             results = await asyncio.gather(*futures)
 
         # Process results
@@ -288,13 +287,11 @@ async def scanner(application: Application):
 
     except Exception as e:
         logger.error(f"Tarama döngüsü hatası: {e}")
-        # No need to close sync client usually, but if needed:
-        # binance_client = None
 
 async def background_scanner(application: Application):
     while True:
         await scanner(application)
-        await asyncio.sleep(5) # Wait 5 seconds between scans
+        await asyncio.sleep(20) # Wait 20 seconds between scans to respect API limits
 
 # --- TELEGRAM COMMANDS ---
 
