@@ -213,7 +213,8 @@ async def scanner(application: Application):
             adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=20)
             session.mount('https://', adapter)
             
-            binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, requests_params={'session': session})
+            binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
+            binance_client.session = session
             logger.info("Binance Client (Sync) başlatıldı (Custom Session).")
         except Exception as e:
             logger.error(f"Binance client başlatılamadı: {e}")
