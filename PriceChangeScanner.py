@@ -137,14 +137,36 @@ def generate_chart_image(symbol, df, change_percent, interval_minutes):
         f"Son {interval_minutes} dakika içinde <b>%{change_percent:.2f}</b> değişim."
     )
 
-    s = mpf.make_mpf_style(base_mpf_style='binance', rc={'font.size': 8})
+    # Custom TradingView Style
+    mc = mpf.make_marketcolors(
+        up='#089981', down='#f23645',
+        edge={'up': '#089981', 'down': '#f23645'},
+        wick={'up': '#089981', 'down': '#f23645'},
+        volume={'up': '#089981', 'down': '#f23645'},
+        ohlc='i'
+    )
+    
+    s = mpf.make_mpf_style(
+        base_mpf_style='nightclouds',
+        marketcolors=mc,
+        facecolor='#131722',
+        edgecolor='#2a2e39',
+        figcolor='#131722',
+        gridcolor='#2a2e39',
+        gridstyle='--',
+        rc={'axes.labelcolor': '#d1d4dc', 'xtick.color': '#d1d4dc', 'ytick.color': '#d1d4dc', 'axes.edgecolor': '#2a2e39'}
+    )
     
     plot_args = {
         'type': 'candle',
         'style': s,
-        'title': title_text,
+        'title': dict(title=title_text, color='#d1d4dc', fontsize=12),
         'ylabel': 'Price',
-        'savefig': filepath
+        'savefig': dict(fname=filepath, facecolor='#131722', bbox_inches='tight'),
+        'volume': True,
+        'datetime_format': '%H:%M',
+        'xrotation': 0,
+        'tight_layout': True
     }
     
     mpf.plot(df.iloc[-60:], **plot_args)
